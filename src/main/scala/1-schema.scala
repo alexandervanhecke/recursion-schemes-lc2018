@@ -26,7 +26,19 @@ object SchemaF extends SchemaFToDataTypeAlgebras with SchemaFArbitrary {
   /**
     * As usual, we need to define a Functor instance for our pattern.
     */
-  implicit val schemaFScalazFunctor: Functor[SchemaF] = TODO
+  implicit val schemaFScalazFunctor: Functor[SchemaF] = new Functor[SchemaF] {
+    override def map[A, B](fa: SchemaF[A])(f: A => B): SchemaF[B] = fa match {
+      case StructF(fields) => StructF(fields.map { case (key, value) => key -> f(value) })
+      case ArrayF(el)      => ArrayF(f(el))
+      case BooleanF()      => BooleanF()
+      case DateF()         => DateF()
+      case DoubleF()       => DoubleF()
+      case FloatF()        => FloatF()
+      case IntegerF()      => IntegerF()
+      case LongF()         => LongF()
+      case StringF()       => StringF()
+    }
+  }
 
   /**
     * It might be usefull to have a nice string representation of our schemas.
@@ -47,7 +59,19 @@ object SchemaF extends SchemaFToDataTypeAlgebras with SchemaFArbitrary {
     */
   implicit val schemaFDelayShow: Delay[Show, SchemaF] = new Delay[Show, SchemaF] {
     def apply[A](showA: Show[A]): Show[SchemaF[A]] = new Show[SchemaF[A]] {
-      override def show(schema: SchemaF[A]): Cord = TODO
+      override def show(schema: SchemaF[A]): Cord = schema match {
+        case StructF(fields) =>
+          Cord(fields.map { case (key, value) => s"$key: ${showA.shows(value)}" }.mkString("{ ", ", ", " }"))
+        case ArrayF(el) => Cord("[ ", showA.show(el), " ]")
+        case BooleanF() => Cord("boolean")
+        case DateF()    => Cord("date")
+        case DoubleF()  => Cord("double")
+        case FloatF()   => Cord("float")
+        case IntegerF() => Cord("integer")
+        case LongF()    => Cord("long")
+        case StringF()  => Cord("string")
+
+      }
     }
   }
 
@@ -73,12 +97,32 @@ trait SchemaFToDataTypeAlgebras {
   /**
     * As usual, simply a function from SchemaF[DataType] to DataType
     */
-  def schemaFToDataType: Algebra[SchemaF, DataType] = TODO
+  def schemaFToDataType: Algebra[SchemaF, DataType] = {
+    case StructF(fields) => StructType(fields.map { case (key, value) => StructField(key, value) }.toArray)
+    case ArrayF(el)      => ArrayType(el, containsNull = false)
+    case BooleanF()      => BooleanType
+    case DateF()         => DateType
+    case DoubleF()       => DoubleType
+    case FloatF()        => FloatType
+    case IntegerF()      => IntegerType
+    case LongF()         => LongType
+    case StringF()       => BooleanType
+  }
 
   /**
     * And the other way around, a function from DataType to SchemaF[DataType]
     */
-  def dataTypeToSchemaF: Coalgebra[SchemaF, DataType] = TODO
+  def dataTypeToSchemaF: Coalgebra[SchemaF, DataType] = {
+    case BooleanType        => BooleanF()
+    case DateType           => DateF()
+    case DoubleType         => DoubleF()
+    case FloatType          => FloatF()
+    case IntegerType        => IntegerF()
+    case LongType           => LongF()
+    case StringType         => StringF()
+    case ArrayType(el, _)   => ArrayF(el)
+    case StructType(fields) => StructF(ListMap(fields.map(field => field.name -> field.dataType): _*))
+  }
 
   /**
     * This pair of (co)algebras allows us to create a Birecursive[DataType, SchemaF] instance "for free".

@@ -20,7 +20,7 @@ object SchemaFToDataTypeAlgebrasSpec extends Properties("Parquet-related algebra
 
   import SchemaF._
 
-  property("invertible") = forAll { (schema: Fix[SchemaF]) =>
+  property("invertible") = forAll { schema: Fix[SchemaF] =>
     // We want to convert `schema` to DataType and then back to Fix[SchemaF] using the (co)algebras we've just defined.
     val roundtrip: Fix[SchemaF] = schema.cata(schemaFToDataType).ana[Fix[SchemaF]](dataTypeToSchemaF)
     (roundtrip == schema) :| s"$roundtrip\n==\n$schema"

@@ -106,7 +106,7 @@ trait SchemaFToDataTypeAlgebras {
     case FloatF()        => FloatType
     case IntegerF()      => IntegerType
     case LongF()         => LongType
-    case StringF()       => BooleanType
+    case StringF()       => StringType
   }
 
   /**
@@ -188,7 +188,22 @@ trait SchemaFArbitrary {
 
   implicit def schemaFDelayArbitrary: Delay[Arbitrary, SchemaF] = new Delay[Arbitrary, SchemaF] {
 
-    def apply[A](A: Arbitrary[A]): Arbitrary[SchemaF[A]] = TODO
+    def gen[A](A: Arbitrary[A]): Gen[SchemaF[A]] = Gen.oneOf(
+      Gen.const(BooleanF[A]()),
+      Gen.const(DateF[A]()),
+      Gen.const(DoubleF[A]()),
+      Gen.const(FloatF[A]()),
+      Gen.const(IntegerF[A]()),
+      Gen.const(LongF[A]()),
+      Gen.const(StringF[A]()),
+      A.arbitrary.map(ArrayF(_)),
+      for {
+        numFields <- Gen.choose(1, 10)
+        values    <- Gen.listOfN(numFields, A.arbitrary)
+      } yield StructF(ListMap(values.zipWithIndex.map { case (value, index) => s"key$index" -> value }: _*))
+    )
+
+    def apply[A](A: Arbitrary[A]): Arbitrary[SchemaF[A]] = Arbitrary(gen[A](A))
 
   }
 }

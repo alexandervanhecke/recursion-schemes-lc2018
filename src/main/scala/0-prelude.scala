@@ -24,7 +24,7 @@ object PeanoNumbers {
     *
     * Hint: there is a type in the standard library that has exactly the structure we want.
     */
-  type PeanoNumberF[A] = TODO
+  type PeanoNumberF[A] = Option[A]
 
   /**
     * The problem with the PeanonumberF encoding is that now, different numbers
@@ -32,7 +32,7 @@ object PeanoNumbers {
     *
     * We need a fix-point of PeanoNumberF to build a type that can represent all numbers.
     */
-  type PeanoNumber = TODO
+  type PeanoNumber = Fix[PeanoNumberF]
 
   /**
     * Now let's write our very first Algebra! Yay!
@@ -40,19 +40,22 @@ object PeanoNumbers {
     * We want to transform our Peano representation to Int. It's as simple as counting
     * the "layers" of "successor".
     */
-  def countLayers: Algebra[PeanoNumberF, Int] = TODO
+  def countLayers: Algebra[PeanoNumberF, Int] =
+    _.fold(0)(_ + 1)
 
   /**
     * We now have all the ingredients needed to use our first recursion scheme.
     *
     * Hint: this will use the algebra defined above to *destroy* our recursive structure.
     */
-  def toInt(peano: PeanoNumber): Int = TODO
+  def toInt(peano: PeanoNumber): Int =
+    peano.cata(countLayers)
 
   /**
     * Now we just need a value to test our functions
+    * final case class Fix[F[_]](unFix: F[Fix[F]])
     */
-  val three: PeanoNumber = TODO
+  val three: PeanoNumber = Fix(Some(Fix(Some(Fix(Some(Fix(none[PeanoNumber])))))))
 
   assert(toInt(three) == 3)
 }
@@ -73,25 +76,49 @@ object BinaryTrees {
     * of Tree by this type parameter in the ADT.
     */
   sealed trait TreeF[A]
+  final case class BranchF[A](label: Int, left: A, right: A) extends TreeF[A]
+  final case class LeafF[A](label: Int)                      extends TreeF[A]
+  final case class EmptyF[A]()                               extends TreeF[A]
   // TODO
 
   /**
     * Of course, we need to have an instance of Functor[TreeF] for it to be a real pattern-functor.
     */
-  implicit val treeFFunctor: Functor[TreeF] = TODO
+  implicit val treeFFunctor: Functor[TreeF] =
+    new Functor[TreeF] {
+      override def map[A, B](fa: TreeF[A])(f: A => B): TreeF[B] =
+        fa match {
+          case BranchF(label, left, right) =>
+            BranchF(label, f(left), f(right))
+          case LeafF(label) =>
+            LeafF(label)
+          case EmptyF() => EmptyF()
+        }
+    }
 
   /**
     * It's a good idea to have a pair of (co)algebras that go from Tree to TreeF (and vice versa).
     */
-  def treeAlg: Algebra[TreeF, Tree]     = TODO
-  def treeCoalg: Coalgebra[TreeF, Tree] = TODO
+  def treeAlg: Algebra[TreeF, Tree] = {
+    case BranchF(label, left, right) =>
+      Branch(label, left, right)
+    case LeafF(label) => Leaf(label)
+    case EmptyF()     => Empty()
+  }
+  def treeCoalg: Coalgebra[TreeF, Tree] = {
+    case Branch(label, left, right) =>
+      BranchF(label, left, right)
+    case Leaf(label) => LeafF(label)
+    case Empty()     => EmptyF()
+  }
 
   /**
     * These two (co)algebras make it easy to provide a Birecursive instance for Tree/TreeF.
     * This allows to treat Tree as if it were a TreeF, and thus enables to use schemes directly
     * on a Tree (rather than having to wrap it in a fixpoint).
     */
-  implicit val treeBirecursive: Birecursive.Aux[Tree, TreeF] = Birecursive.fromAlgebraIso(treeAlg, treeCoalg)
+  implicit val treeBirecursive: Birecursive.Aux[Tree, TreeF] =
+    Birecursive.fromAlgebraIso(treeAlg, treeCoalg)
 
   import Recursive.ops._
 
@@ -101,9 +128,17 @@ object BinaryTrees {
     * The produced list contains the labels of all the nodes in the tree
     * as enumerated by a depth-first, left-to-right traversal.
     */
-  def toList: Algebra[TreeF, List[Int]] = TODO
+  def toList: Algebra[TreeF, List[Int]] = {
+    case BranchF(label, left, right) =>
+      left
+        .mappend(List(label))
+        .mappend(right)
+    case LeafF(label) => List(label)
+    case EmptyF()     => List.empty[Int]
+  }
 
-  val testTree: Recursive.AllOps[Tree, TreeF] = Branch(12, Branch(10, Leaf(1), Empty()), Leaf(15))
+  val testTree: Recursive.AllOps[Tree, TreeF] =
+    Branch(12, Branch(10, Leaf(1), Empty()), Leaf(15))
 
   assert(testTree.cata(toList) == List(1, 10, 12, 15))
 
@@ -114,11 +149,23 @@ object BinaryTrees {
     * node has a label that is greater than all the labels in its left subtree
     * and lesser than all the labels in its right subtree.
     */
-  def fromList: Coalgebra[TreeF, List[Int]] = TODO
+  def fromList: Coalgebra[TreeF, List[Int]] = {
+    case Nil      => EmptyF()
+    case x :: Nil => LeafF(x)
+    case x :: xs =>
+      BranchF(x, xs.filter(_ < x), xs.filter(_ > x))
+  }
 
   /**
     * I wonder what this mystery function does…
     */
-  def mystery(input: List[Int]): List[Int] = input.hylo(toList, fromList)
+  def mystery(input: List[Int]): List[Int] =
+    input.hylo(toList, fromList)
 
+}
+
+object Test extends App {
+  import BinaryTrees._
+
+  println(mystery(List(5, 1, 20, 10)))
 }
